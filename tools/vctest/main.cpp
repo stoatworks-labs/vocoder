@@ -486,6 +486,11 @@ std::vector< float > bytesToFloatBottomUp( const std::vector< unsigned char >& r
 
 int runIdentity()
 {
+	// One ULP of a float32 just below 1.0 is 2^-24; allow 2^-23 so a single
+	// rounding difference on either side of the cancellation passes and a real
+	// reconstruction error, which is orders of magnitude larger, does not.
+	constexpr float kIdentityUlp = 1.1920929e-07f;
+
 	struct Size
 	{
 		const char* name;
@@ -590,7 +595,18 @@ int runIdentity()
 			partition = maxAbsDifference( sum, expected, 3 );
 		}
 
-		const bool ok = identity == 0.0f && lumaIdentity <= size.tolerance && partition <= size.tolerance;
+		// Exactness here is structural: at unity gain the reconstruction's
+		// expanded term is G - G, so the difference cancels bit for bit -- but
+		// only while BOTH paths compute G the same way. On this Mac they do and
+		// the measurement is a literal 0. On GitHub's macOS runner, which has no
+		// accelerated GL context, it comes back 5.96e-08 -- one ULP of a float
+		// near 1.0, the signature of the two paths rounding differently (an FMA
+		// contracted on one side and not the other is enough to do it). So the
+		// check allows one ULP, and the run still PRINTS the value, which is
+		// what says whether this machine cancelled exactly or only to the last
+		// bit. Tightening this back to `== 0.0f` makes the suite a statement
+		// about one GPU rather than about the algorithm.
+		const bool ok = identity <= kIdentityUlp && lumaIdentity <= size.tolerance && partition <= size.tolerance;
 		if( !ok )
 			++failures;
 
@@ -598,7 +614,8 @@ int runIdentity()
 		             partition, ok ? "ok" : "FAILED" );
 	}
 
-	std::printf( "\nidentity must be exactly 0; luma identity and partition within 1e-3 (2e-3 at 4K)\n" );
+	std::printf( "\nidentity within one float ULP (1.19e-07), and 0 where the two paths round\n"
+	             "identically; luma identity and partition within 1e-3 (2e-3 at 4K)\n" );
 	std::printf( "%s\n", failures == 0 ? "identity: all ok" : "identity: FAILURES" );
 	return failures == 0 ? 0 : 1;
 }

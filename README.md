@@ -4,8 +4,10 @@
 > (Anthropic), directed and reviewed by a human author. The central claim is
 > numerical, so it is measured rather than asserted: an offline harness drives
 > the real plugin class in a headless GL context and checks that the pyramid
-> reconstructs its input **exactly — a maximum difference of 0** at 720p, 1080p
-> and 4K; that its bands genuinely partition the picture (9.5e-07); that the
+> reconstructs its input **to a maximum difference of 0** at 720p, 1080p and 4K
+> on this Mac, and **within one float ULP** on hardware where the two sides of
+> the cancellation round differently, as GitHub's macOS runner does; that its
+> bands genuinely partition the picture (9.5e-07); that the
 > shipped shaders compute what an independent CPU implementation of
 > Burt–Adelson computes (1.2e-07 over eight bands); that a sine in audio band
 > *k* moves picture band *k* and no other; and that the envelope followers keep
@@ -34,6 +36,14 @@ With every gain at 1× the input comes back **exactly**, and not approximately:
 the reconstruction is arranged so that the thing being expanded is a difference
 that is identically zero, so the output is the input to the bit. That is the
 plugin's null, and it is what makes everything else honest.
+
+The exactness is structural rather than lucky — but it holds to the bit only
+while both sides of that difference are computed the same way. They are on this
+Mac, where the measurement is a literal zero. On GitHub's macOS runner, which
+has no accelerated GL context, the same test reads 5.96e-08: one ULP of a float,
+which is a rounding difference between the two paths and not a reconstruction
+error. The check allows that ULP and prints the number either way, so the
+distinction stays visible instead of being hidden by a tolerance.
 
 ## What falls out of it
 
