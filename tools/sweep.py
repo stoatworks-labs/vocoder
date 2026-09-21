@@ -67,6 +67,33 @@ SCRATCH = tempfile.mkdtemp(prefix="vcsweep")
 WIDTH, HEIGHT = 640, 360
 FRAMES = 2
 
+def active_levels(width, height):
+    """How many pyramid levels this raster has.
+
+    The same rule as ActiveLevels in source/Pyramid.cpp: halve until a side
+    would go below two pixels. Kept in step with it by hand, which is cheap
+    because the rule is three lines and has no reason to move.
+    """
+    levels = 0
+    w, h = width, height
+    for _ in range(8):
+        w, h = (w + 1) // 2, (h + 1) // 2
+        if min(w, h) < 2:
+            break
+        levels += 1
+    return levels
+
+
+def band_level(name):
+    """The level a 'Band N (… px)' slider drives, or None for anything else."""
+    if not name.startswith("Band "):
+        return None
+    try:
+        return int(name.split()[1])
+    except (IndexError, ValueError):
+        return None
+
+
 # Parameters that cannot be swept, with the reason.
 SKIP = {
     "Audio": "the FFT buffer: its scalar value is meaningless and the plugin "
@@ -214,6 +241,18 @@ def main():
             break
         if name in SKIP:
             skipped.append((name, SKIP[name]))
+            continue
+        # A band slider for a level this raster is too small to have is not a
+        # dead control, it is an absent one. The pyramid stops halving when a
+        # side would fall below two pixels, so the number of bands is a property
+        # of the picture size: eight at 640x360 and above, seven at 320x180.
+        # CI sweeps small to stay inside a GPU-less runner's patience, so
+        # without this the coarsest slider reads DEAD there and nowhere else.
+        band = band_level(name)
+        if band is not None and band > active_levels(WIDTH, HEIGHT):
+            skipped.append((name, "no such band at %dx%d: the pyramid has %d "
+                                  "levels here, and this is level %d"
+                                  % (WIDTH, HEIGHT, active_levels(WIDTH, HEIGHT), band)))
             continue
         work.append((pid, name, CONTEXT.get(name, {})))
 
