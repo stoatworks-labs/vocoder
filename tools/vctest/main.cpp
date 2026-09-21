@@ -17,6 +17,14 @@
                                         band k and no other, both mappings
         vctest --envelope               the followers keep their time constants
         vctest --bench                  ms/frame at 720p, 1080p and 4K
+        vctest --pipe                   raw frames in, raw frames out
+
+    `--pipe` takes the fleet's frame format, identical to tinseltest, octest,
+    phtest and sctest, so one filming script can drive any of the plugins:
+
+        ffmpeg -i in.mov -f rawvideo -pix_fmt rgba - \
+          | vctest --pipe --width 1920 --height 1080 [--script cues.txt] \
+          | ffmpeg -f rawvideo -pix_fmt rgba -s 1920x1080 -i - out.mov
 
     Four checks, four physics claims in the spec. Each one is something that
     is true or false, and each has already earned its keep -- see AGENTS.md
@@ -34,6 +42,7 @@
 
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
+#include <unistd.h>
 #include <zlib.h>
 
 #include <algorithm>
@@ -42,6 +51,9 @@
 #include <complex>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -342,6 +354,17 @@ struct Session
 		glPixelStorei( GL_PACK_ALIGNMENT, 1 );
 		glReadPixels( 0, 0, width, height, GL_RGBA, GL_FLOAT, pixels.data() );
 		return pixels;
+	}
+
+	/// A new picture into the source texture, for --pipe. Flipped for the same
+	/// reason begin() flips: a raw frame arrives top row first and GL wants
+	/// bottom row first.
+	void upload( const std::vector< unsigned char >& rgba )
+	{
+		const std::vector< unsigned char > flipped = flipRows( rgba, width, height );
+		glBindTexture( GL_TEXTURE_2D, sourceTexture );
+		glTexSubImage2D( GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data() );
+		glBindTexture( GL_TEXTURE_2D, 0 );
 	}
 
 	/// The output as bytes, top row first, for a PNG.
@@ -1053,6 +1076,207 @@ int runBench( int frames )
 }
 
 //---------------------------------------------------------------------------
+// --pipe cue sheet: one `frame Parameter Name value` per line, held before the
+// first key and after the last, and linearly interpolated between. The format
+// is identical to tinseltest, octest, phtest and sctest on purpose, so one
+// build script can film any of the plugins in the fleet.
+//
+// Note what interpolation means for an OPTION parameter -- Carrier here.
+// Moving one produces the intermediate values on the way, so key it one frame
+// apart to cut rather than slide, and give it a hold key at the END of each
+// section it must not move in.
+//---------------------------------------------------------------------------
+using Track = std::vector< std::pair< int, float > >;
+
+std::map< std::string, Track > loadScript( const std::string& path, std::string& error )
+{
+	std::map< std::string, Track > tracks;
+	std::ifstream file( path );
+	if( !file )
+	{
+		error = "cannot open " + path;
+		return tracks;
+	}
+
+	std::string line;
+	int lineNumber = 0;
+	while( std::getline( file, line ) )
+	{
+		++lineNumber;
+		const size_t hash = line.find( '#' );
+		if( hash != std::string::npos )
+			line.erase( hash );
+		std::istringstream in( line );
+
+		int frame = 0;
+		if( !( in >> frame ) )
+			continue;//blank or comment
+
+		//The name is everything up to the last token, because parameters have
+		//spaces in them ("Band 3 (4 px)") and the value never does.
+		std::vector< std::string > words;
+		std::string word;
+		while( in >> word )
+			words.push_back( word );
+		if( words.size() < 2 )
+		{
+			error = path + ":" + std::to_string( lineNumber ) + ": expected `frame Parameter Name value`";
+			return {};
+		}
+
+		const float value = std::strtof( words.back().c_str(), nullptr );
+		words.pop_back();
+		std::string name = words.front();
+		for( size_t i = 1; i < words.size(); ++i )
+			name += " " + words[ i ];
+
+		tracks[ name ].emplace_back( frame, value );
+	}
+
+	for( auto& entry : tracks )
+		std::sort( entry.second.begin(), entry.second.end() );
+	return tracks;
+}
+
+float valueAt( const Track& track, int frame )
+{
+	if( track.empty() )
+		return 0.0f;
+	if( frame <= track.front().first )
+		return track.front().second;
+	if( frame >= track.back().first )
+		return track.back().second;
+
+	for( size_t i = 1; i < track.size(); ++i )
+	{
+		if( frame <= track[ i ].first )
+		{
+			const auto& a    = track[ i - 1 ];
+			const auto& b    = track[ i ];
+			const float span = static_cast< float >( b.first - a.first );
+			const float t    = span > 0.0f ? ( static_cast< float >( frame - a.first ) / span ) : 1.0f;
+			return a.second + ( b.second - a.second ) * t;
+		}
+	}
+	return track.back().second;
+}
+
+/**
+    Raw RGBA in, raw RGBA out, one frame at a time.
+
+    This is what the video pipeline drives: ffmpeg decodes to rawvideo, this
+    puts every frame through the real plugin class, and ffmpeg encodes the
+    result. Nothing here is a second implementation of anything -- it is the
+    same Session the stills and the checks use, with the card replaced by
+    whatever arrives on stdin.
+
+    The clock is SYNTHETIC, at `fps`, and that is not a detail. Left to the
+    wall clock the envelope followers would advance by however long ffmpeg
+    happened to take, so a stall upstream would show up in the take as the
+    sidechain briefly going slack -- and no two runs would produce the same
+    file.
+*/
+int runPipe( int width, int height, double fps, float feed, const std::string& scriptPath,
+             const std::vector< std::string >& settings )
+{
+	Session s;
+
+	for( const std::string& setting : settings )
+	{
+		std::string error;
+		if( !applySetting( s.plugin, setting, error ) )
+		{
+			std::fprintf( stderr, "--set %s: %s\n", setting.c_str(), error.c_str() );
+			return 2;
+		}
+	}
+
+	//Resolve the script's parameter names to indices once, up front, and refuse
+	//to run on a name that is not a parameter. A misspelled name that silently
+	//did nothing would produce a take that looks deliberate and is wrong -- the
+	//reel would hold whatever the default was, with a caption over it describing
+	//the control that never moved.
+	std::map< unsigned int, Track > automation;
+	if( !scriptPath.empty() )
+	{
+		std::string error;
+		const std::map< std::string, Track > tracks = loadScript( scriptPath, error );
+		if( !error.empty() )
+		{
+			std::fprintf( stderr, "%s\n", error.c_str() );
+			return 2;
+		}
+		for( const auto& entry : tracks )
+		{
+			const int index = indexOf( s.plugin, entry.first.c_str() );
+			if( index < 0 )
+			{
+				std::fprintf( stderr, "script names '%s', which is not a parameter (try --list)\n",
+				              entry.first.c_str() );
+				return 2;
+			}
+			automation[ static_cast< unsigned int >( index ) ] = entry.second;
+		}
+	}
+
+	//RGBA8 out, because that is the host's framebuffer and this is filming
+	//rather than measuring. The float path is for the checks.
+	const std::vector< unsigned char > blank( static_cast< size_t >( width ) * height * 4, 0 );
+	if( !s.begin( width, height, blank, false ) )
+		return 1;
+
+	std::vector< unsigned char > frame( blank.size() );
+
+	for( int index = 0;; ++index )
+	{
+		size_t filled = 0;
+		while( filled < frame.size() )
+		{
+			const ssize_t got = read( STDIN_FILENO, frame.data() + filled, frame.size() - filled );
+			if( got <= 0 )
+				break;
+			filled += static_cast< size_t >( got );
+		}
+		//A short read is the end of the stream, or a frame size that does not
+		//match --width/--height. Either way there is no frame to render.
+		if( filled < frame.size() )
+			break;
+
+		for( const auto& track : automation )
+			s.plugin.SetFloatParameter( track.first, valueAt( track.second, index ) );
+
+		const double seconds = static_cast< double >( index ) / fps;
+
+		//Without --feed the Audio group is correctly dead here as everywhere
+		//else offline: the host is the only thing that ever supplies bins.
+		if( feed >= 0.0f )
+			feedSpectrum( s.plugin, feed, seconds );
+
+		s.upload( frame );
+		if( !s.frame( seconds ) )
+		{
+			std::fprintf( stderr, "ProcessOpenGL failed on frame %d\n", index );
+			return 1;
+		}
+
+		const std::vector< unsigned char > out = s.readBytesTopDown();
+		size_t written                         = 0;
+		while( written < out.size() )
+		{
+			const ssize_t put = write( STDOUT_FILENO, out.data() + written, out.size() - written );
+			if( put <= 0 )
+				break;
+			written += static_cast< size_t >( put );
+		}
+		if( written < out.size() )
+			break;//the consumer has gone away
+	}
+
+	s.end();
+	return 0;
+}
+
+//---------------------------------------------------------------------------
 void usage()
 {
 	std::printf(
@@ -1074,6 +1298,12 @@ void usage()
 		"  --audio           a sine in audio band k drives picture band k and no other\n"
 		"  --envelope        the followers' attack and release, measured\n"
 		"  --bench           ms/frame at 720p, 1080p and 4K\n"
+		"\n"
+		"  --pipe            raw RGBA frames on stdin, raw RGBA frames on stdout,\n"
+		"                    at --width x --height. Honours --set and --feed.\n"
+		"  --script PATH     parameter cues for --pipe: one 'frame Parameter Name\n"
+		"                    value' per line, held at the ends and interpolated\n"
+		"                    between\n"
 		"  --help\n" );
 }
 } // namespace
@@ -1082,6 +1312,7 @@ int main( int argc, char** argv )
 {
 	std::string outPath = "/tmp/vocoder.png";
 	std::string cardPath;
+	std::string scriptPath;
 	std::vector< std::string > settings;
 	int width    = 1280;
 	int height   = 720;
@@ -1089,7 +1320,7 @@ int main( int argc, char** argv )
 	double fps   = 60.0;
 	float feed   = -1.0f;
 	bool wantList = false, wantIdentity = false, wantBand = false, wantAudio = false, wantEnvelope = false,
-	     wantBench = false;
+	     wantBench = false, wantPipe = false;
 
 	for( int i = 1; i < argc; ++i )
 	{
@@ -1141,6 +1372,10 @@ int main( int argc, char** argv )
 			wantEnvelope = true;
 		else if( argument == "--bench" )
 			wantBench = true;
+		else if( argument == "--pipe" )
+			wantPipe = true;
+		else if( argument == "--script" && hasNext )
+			scriptPath = argv[ ++i ];
 		else
 		{
 			std::fprintf( stderr, "unknown argument: %s\n", argument.c_str() );
@@ -1199,6 +1434,8 @@ int main( int argc, char** argv )
 		result = runAudio();
 	else if( wantBench )
 		result = runBench( std::max( frames, 60 ) );
+	else if( wantPipe )
+		result = runPipe( width, height, fps, feed, scriptPath, settings );
 	else
 	{
 		//A still. Several frames, not one: the followers need a few to settle

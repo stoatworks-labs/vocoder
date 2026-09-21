@@ -21,6 +21,10 @@
 A channel vocoder with the picture as the carrier, as an FFGL effect for
 [Resolume](https://resolume.com) Arena and Avenue.
 
+**[Try the EQ side in your browser](https://vocoder-demo.stoatworks-labs.com/)** — the
+plugin's own shaders in WebGL2, no install. The audio side is not there and is
+not faked.
+
 <!-- downloads:start -->
 
 ## Download
@@ -184,8 +188,10 @@ what Resolume's 64 FFT bins actually *mean* is **still assumed rather than
 measured**, and remains the biggest open question in the repo — see
 [AGENTS.md](AGENTS.md), which is where the assumption is written down. No long
 session, no composition save/reload and no preset recall in the host were
-exercised either. There is no user guide, no OpenFX port, no browser demo and no
-factory presets.
+exercised either. There is no user guide, no OpenFX port and no factory
+presets. There is a [browser demo](https://vocoder-demo.stoatworks-labs.com/),
+which runs the plugin's own shaders in WebGL2 — but it carries the EQ side
+only and says so, because the audio half cannot be shown in a browser at all.
 
 The DLL in the table above was the hand-built one. CI builds x64 Windows on every
 push and the release workflow builds it again on a GitHub runner — both have run
@@ -221,6 +227,18 @@ The offline harness renders the real plugin class headlessly:
 python3 tools/sweep.py                  # no control is silently dead
 tools/verify.sh                         # all of it, on a fresh universal build
 ```
+
+`--pipe` puts raw RGBA frames from stdin through the real plugin class and
+writes raw RGBA to stdout, so a clip can be filmed through it:
+
+```bash
+ffmpeg -i in.mov -f rawvideo -pix_fmt rgba - \
+  | ./build/vctest --pipe --width 1920 --height 1080 --script cues.txt \
+  | ffmpeg -f rawvideo -pix_fmt rgba -s 1920x1080 -i - out.mov
+```
+
+A cue sheet is one `frame  Parameter Name  value` per line, held at the ends and
+interpolated between.
 
 `--feed L` writes a synthetic spectrum, without which the Audio group is
 correctly dead offline.

@@ -175,7 +175,8 @@ reported the renderer itself:
   The effect was applied to the **composition**, not to a clip:
   `/api/v1/…/clips/1` still showed only `Transform` afterwards, so the proof of
   instantiation is the diag log, not the clip's effect list.
-- **No user guide, no OpenFX port, no browser demo, no factory presets.**
+- **No user guide, no OpenFX port, no factory presets.** There is a browser
+  demo (see below), and it deliberately carries no audio side.
   `StoatworksAbout.h` is **generated** by `sync-about.py` now — the project is
   registered in the website's `projects.json`, in that script's TARGETS and in
   `attributions/names.json` — so do not hand-edit it; it still carries `guide=""`
@@ -335,9 +336,11 @@ on x64 Windows, not as a check of the effect's output, and leave `verify.sh` on
     source/Vocoder.*         the plugin: parameters, buffers, the passes.
     source/EffectPlugin.cpp  the CFFGLPluginInfo, and nothing else.
     source/Diag.*            a log file, for the shader that will not compile.
-    tools/vctest/            the offline harness: four checks and a bench.
+    tools/vctest/            the offline harness: four checks, a bench, --pipe.
     tools/sweep.py           no control is silently dead.
     tools/verify.sh          all of it, on a fresh universal build.
+    demo/                    the browser demo. plugin.js carries a second copy
+                             of every shader; check_shaders.py enforces it.
 
 **Five shaders, 33 passes at eight levels.** `copy` once; `reduce` twice per
 level (one axis each); `expandV` and `expandH` once each per level on the way
@@ -352,7 +355,53 @@ with that gain) and `R_0` is the host's framebuffer, which is why there are
 `ActiveLevels()` stops when a Gaussian would be under two texels on a side, so a
 320×180 frame has seven bands and the eighth slider does nothing — the honest
 answer, and the reason the CI sweep runs at 320×180 with a note rather than
-somewhere smaller.
+somewhere smaller. The browser demo is the one place this is *visible*: it
+computes `activeLevels` for the canvas raster and greys out the sliders for
+bands that do not exist, which the plugin has no way to do in Resolume's
+inspector.
+
+---
+
+## The browser demo
+
+`demo/` is the page at **vocoder-demo.stoatworks-labs.com** — a Cloudflare
+static-assets Worker (`wrangler.toml`, no build step, `cf-run npx wrangler
+deploy`), on the shared kit vendored from `stoatworks-backend/resolume-demo/`
+into `demo/vendor/` by that directory's `sync.sh`. Do not edit `demo/vendor/`;
+fix the master and re-sync.
+
+The five shaders in `demo/plugin.js` are `source/Shaders.cpp`'s, copied across
+unedited. `demo/tools/check_shaders.py` compares them character for character
+and `tools/verify.sh` runs it, because two copies of a shader is exactly the
+arrangement that drifts. The one backtick in `kExpandHShader`'s comments is
+escaped in the JS, and the checker decodes that single escape and rejects any
+other backslash.
+
+Decisions taken when it was built, so they are not re-litigated by accident:
+
+- **The whole Audio group is absent**, not present and dead. The spectrum
+  arrives as a Resolume `FF_USAGE_FFT` parameter, a browser has no equivalent,
+  and asking a visitor for a microphone to demo a video effect is not a trade
+  worth making. The page says so in its disclosure. What is left is not an
+  approximation of the plugin, though: with nothing routed, every envelope sits
+  at zero and the default Floor of 1 makes `PictureGains` return eight ones, so
+  `Compose` reduces to slider × tilt — which is exactly what the page computes.
+- **`needFloat` is set and the page fails loudly without
+  `EXT_color_buffer_float`.** Every pyramid buffer is RGBA32F as in the plugin;
+  eight bits mid-chain would render a plausible wrong picture, which is the
+  failure mode this plugin exists to avoid.
+- **The page does not claim the null is bit-exact.** `--identity` measures 0
+  here and one float ULP on hardware that rounds differently; a browser is a
+  third such platform and nothing on the page measures anything. It offers a
+  "Unity — the null" preset and says the picture comes back *unchanged*.
+  For the record, and as a development check only: in Chrome on the M4 Max the
+  canvas at Mix 1 is **byte-identical** to the canvas at Mix 0 across a whole
+  960×540 frame — agreement to 1/255 on one GPU, through an 8-bit readback,
+  which is a sanity check on the port and not a measurement of the plugin.
+- **The band gain arithmetic is a hand port** of `Controls.cpp` and
+  `Pyramid.cpp`. `check_shaders.py` compares GLSL text and knows nothing about
+  it, so **nothing checks the port but a reader**. Change a mapping in
+  `Controls.cpp` and it has to be changed in `demo/plugin.js` too.
 
 ---
 

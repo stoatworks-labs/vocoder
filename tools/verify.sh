@@ -10,6 +10,9 @@
 #                 compile presents to an operator as "the effect does
 #                 nothing", with the real message buried in the diagnostics
 #                 log.
+#   demo shaders  is the browser demo running the plugin's own GLSL, character
+#                 for character, or has its copy drifted. Nothing else checks
+#                 that: vctest has no idea the page exists.
 #   identity      does the pyramid reconstruct its input -- exactly, on the
 #                 defaults -- and do its bands and residual actually partition
 #                 the picture. The first is the plugin's null and the second is
@@ -148,6 +151,27 @@ if shaders_compile; then
 	pass "every shader compiles"
 else
 	fail "a shader does not compile"
+fi
+
+#---------------------------------------------------------------------------
+# The browser demo's copy of the shaders, against the plugin's.
+#
+# demo/plugin.js carries a second copy of every shader in source/Shaders.cpp,
+# because a browser cannot include a C++ file. Two copies drift, and the drift
+# is invisible from both sides -- the plugin keeps working and the page keeps
+# working, and they quietly stop being the same effect. The page's whole claim
+# is that it runs the plugin's own code.
+#---------------------------------------------------------------------------
+step "demo shaders"
+if [ -f demo/tools/check_shaders.py ]; then
+	if python3 demo/tools/check_shaders.py >/tmp/vocoder-demo-shaders.txt 2>&1; then
+		pass "$( tail -1 /tmp/vocoder-demo-shaders.txt )"
+	else
+		fail "the demo's shaders have drifted -- see /tmp/vocoder-demo-shaders.txt"
+		grep -E '^FAIL|^ ' /tmp/vocoder-demo-shaders.txt | head -6 | sed 's/^/        /'
+	fi
+else
+	fail "demo/tools/check_shaders.py is missing -- the demo's shader copies are unchecked"
 fi
 
 step "build (fresh, universal, Release)"
