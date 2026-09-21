@@ -1,0 +1,94 @@
+name: ci
+
+# Both platforms on every push and pull request, so a Dependabot bump has a
+# status check to gate on and a GLEW-shaped break -- which macOS is
+# structurally blind to, because macOS never links GLEW -- is caught before a
+# tag. There is no Linux job: the CMakeLists branches on APPLE and WIN32, and
+# Resolume has no Linux build.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The FFGL SDK is a submodule. Without this CMake fails at configure
+          # time with a missing-directory error that reads like a broken repo.
+          submodules: recursive
+
+      - name: Configure
+        # arm64 only, unlike the release build's universal arm64;x86_64 -- the
+        # second slice doubles the build for no extra signal, because a source
+        # break is not architecture-specific.
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DVOCODER_BUILD_TOOLS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: The checks
+        # ctest runs --identity, --band, --audio and --envelope. Three of the
+        # four need a GPU; the runner has none, so these are software-rendered
+        # and slow. They are also the whole point of the repo, so they run
+        # anyway -- and --band builds an 8-level pyramid of a 2048x1024 frame,
+        # which is where the time goes.
+        timeout-minutes: 30
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Controls
+        # At 320x180, because the runner has no GPU and the question is only
+        # whether a control changed ANY subpixel. Two at a time on a
+        # three-core runner; graticule's sweep at 320x180 with an eight-wide
+        # pool was still going at twenty minutes.
+        #
+        # Note what a smaller raster costs here: below 640x360 the picture no
+        # longer supports all eight levels, so the coarsest band's slider acts
+        # on a band that does not exist and would read as dead. 320x180 keeps
+        # seven of the eight, and the eighth is covered by the local run.
+        timeout-minutes: 25
+        run: python3 tools/sweep.py --size 320x180 --jobs 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vocoder-macos-arm64
+          path: build/*.bundle
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        # The toolchain path MUST stay double-quoted: a `run:` step on Windows
+        # is PowerShell, and unquoted this expands to nothing.
+        #
+        # Tools off: vctest stands up a CGL context and links zlib, both of
+        # which are macOS-only here.
+        run: >
+          cmake -B build -A x64
+          -DCMAKE_BUILD_TYPE=Release
+          -DVOCODER_BUILD_TOOLS=OFF
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vocoder-windows-x86_64
+          path: build/Release/*.dll
+          if-no-files-found: error
