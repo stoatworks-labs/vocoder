@@ -1,0 +1,11 @@
+{
+  "name": "vocoder",
+  "version-string": "0.1.0",
+  "description": "Dependencies for building the Vocoder FFGL plugin. GLEW is only needed on Windows; macOS uses the system OpenGL framework. There are no other dependencies: the pyramid is five shaders and the audio analysis is arithmetic.",
+  "dependencies": [
+    {
+      "name": "glew",
+      "platform": "!osx"
+    }
+  ]
+}
