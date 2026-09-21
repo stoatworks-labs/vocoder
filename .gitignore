@@ -11,3 +11,6 @@
 /.idea/
 /.vscode/
 *.xcodeproj/xcuserdata/
+
+# Windows x64 DLLs staged back from the Parallels build guest.
+/out-windows/
