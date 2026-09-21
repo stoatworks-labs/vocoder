@@ -113,7 +113,7 @@ build.
 | Audio band *k* → picture band *k* | 16 mapping cases exact; 10 of them re-checked through the picture against the equivalent slider, **max difference 0** |
 | Envelope followers | attack and release within **0.0%** of the time constants, at three settings |
 | No dead controls | all **19** swept parameters measurably change the picture (2 skipped, with reasons) |
-| macOS binary | universal (`arm64 x86_64`), exports `plugMain`, ad-hoc signs |
+| macOS binary | a local build is universal (`arm64 x86_64`), exports `plugMain`, and ad-hoc signs |
 | As a host reads it | `oxbow probe`: **SW Vocoder**, `VC01`, effect, 24 parameters in 4 groups, none truncated |
 | Render cost | 0.77 ms at 720p, 0.66 at 1080p, 1.89 at 4K |
 
@@ -152,8 +152,12 @@ what Resolume's 64 FFT bins actually *mean* is **still assumed rather than
 measured**, and remains the biggest open question in the repo — see
 [AGENTS.md](AGENTS.md), which is where the assumption is written down. No long
 session, no composition save/reload and no preset recall in the host were
-exercised either. There is no OpenFX port, no browser demo, no factory presets
-and no release tag.
+exercised either. There is no user guide, no OpenFX port, no browser demo and no
+factory presets.
+
+The DLL in the table above was the hand-built one. CI builds x64 Windows on every
+push and the release workflow builds it again on a GitHub runner — both have run
+and passed — but neither of those builds has been put in front of Arena.
 
 ## Build
 

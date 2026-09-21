@@ -116,7 +116,7 @@ design.
   value is meaningless) and the About block (browser buttons).
 - **The bundle is what a host thinks it is.** `oxbow probe` reads **SW
   Vocoder**, `VC01`, effect, 2.1, 24 parameters in four groups, no name
-  truncated. Universal (`arm64 x86_64`), exports `plugMain`, ad-hoc signs, and
+  truncated. A local build is universal (`arm64 x86_64`), exports `plugMain`, ad-hoc signs, and
   `CFBundleExecutable`/`CFBundleIdentifier` both check out.
 - **Render cost**, 60 frames after a 20-frame warm-up with `glFinish` on both
   sides: **0.77 ms** at 720p, **0.66 ms** at 1080p, **1.89 ms** at 4K. 1080p
@@ -174,12 +174,14 @@ reported the renderer itself:
   The effect was applied to the **composition**, not to a clip:
   `/api/v1/…/clips/1` still showed only `Transform` afterwards, so the proof of
   instantiation is the diag log, not the clip's effect list.
-- **No OpenFX port, no browser demo, no factory presets, no release tag, no
-  website registration.** `StoatworksAbout.h` and `ATTRIBUTIONS.md` are
-  provisional hand copies in the shape the fleet's sync scripts generate, with
-  `guide=""` because no user guide exists — the same state graticule shipped in.
-  A `static_assert` in `Vocoder.cpp` fires if a regenerated About header changes
-  the button count.
+- **No user guide, no OpenFX port, no browser demo, no factory presets.**
+  `StoatworksAbout.h` is **generated** by `sync-about.py` now — the project is
+  registered in the website's `projects.json`, in that script's TARGETS and in
+  `attributions/names.json` — so do not hand-edit it; it still carries `guide=""`
+  because no user guide exists. A `static_assert` in `Vocoder.cpp` fires if a
+  regenerated About header changes the button count. `ATTRIBUTIONS.md` is still a
+  provisional hand copy, because `sync-attributions.py`'s master lists do not know
+  this repo yet.
 
 ---
 
