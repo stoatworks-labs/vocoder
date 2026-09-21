@@ -10,8 +10,10 @@
 > Burt–Adelson computes (1.2e-07 over eight bands); that a sine in audio band
 > *k* moves picture band *k* and no other; and that the envelope followers keep
 > their attack and release times. A control sweep fails if any parameter turns
-> out to do nothing. It has **never been loaded into Resolume** — only compiled,
-> rendered and measured offline. Check it in your own rig before trusting it in
+> out to do nothing. It **has** been registered, loaded and instantiated in
+> Resolume Arena 7.27.1 — on Windows, on a software rasteriser, with the shaders
+> compiling — but it has **never run on a GPU in Resolume**, and has never been
+> instantiated in Arena on macOS. Check it in your own rig before trusting it in
 > a show.
 
 A channel vocoder with the picture as the carrier, as an FFGL effect for
@@ -110,14 +112,38 @@ for eight levels and most of them are tiny, so at small sizes the per-pass
 overhead dominates and the pixel count barely matters. At 4K it is 11% of a
 60 fps frame.
 
-**Not verified.** It has never been loaded into Resolume, so how the parameters
-*present* — whether eleven EQ sliders read sensibly in the inspector — is
-untested, and **no real audio spectrum has ever reached it**: the harness writes
-a synthetic one, because the host is the only thing that can fill an FFT buffer.
-What Resolume's 64 FFT bins actually *mean* is assumed rather than measured —
-see [AGENTS.md](AGENTS.md), which is where the assumption is written down. The
-Windows build is CI-only and has never been run. There is no OpenFX port, no
-browser demo, no factory presets and no release tag.
+### In Resolume, on Windows
+
+On 2026-09-21 the plugin was put in front of a real host for the first time:
+**Resolume Arena 7.27.1** (build 15990) on win-lab, an x64 Windows 11 Pro VM
+with **no GPU**, so OpenGL came from **Mesa llvmpipe** — the plugin reported
+`Mesa … llvmpipe (LLVM 22.1.8, 256 bits) … 4.5 (Core Profile) Mesa 26.2.0`
+itself.
+
+| Check | Result |
+| --- | --- |
+| Windows x64 DLL | cross-compiled in the Parallels guest on the Mac (ARM64 Windows 11, MSVC 2022 Build Tools, `cmake -A x64`, vcpkg `x64-windows-static-md`) — **372,736 bytes**, `dumpbin /EXPORTS` shows `plugMain` |
+| Arena registers it | Arena's own REST API lists **SW Vocoder** among 112 video effects, under `idstring` `VC01`, with the description the plugin declares |
+| Arena loads the DLL | the plugin wrote `plugin loaded build=<stamp>` to its diag log, with the stamp of the DLL built minutes earlier |
+| Arena instantiates it, and the shaders compile | applied from Arena's own effects browser; logged the GL strings then `initialised`, and Arena drew its inspector, groups and all |
+| Host clock unit, in a real host | logged `host clock unit decided: milliseconds` inside Arena, against seconds under oxbow — the first time that code has met a real host |
+| Headless on x64 Windows | `oxbow selftest`: **120 frames, gl error 0x0, PASS**, 921,600/921,600 lit pixels (100%) |
+| Warnings or errors | none — the diag log is clean of WARN/ERROR/FAIL |
+
+**No GPU was involved**, so nothing here says anything about performance on
+Windows and nothing was timed there; the ms/frame figures above remain
+macOS-only.
+
+**Not verified.** It has never been instantiated in Arena on macOS, and it has
+never run on a GPU in Resolume on either platform. **No real audio reached it in
+Arena**: the audio paths are still exercised only by the harness's synthetic
+spectrum, because the host is the only thing that can fill an FFT buffer. So
+what Resolume's 64 FFT bins actually *mean* is **still assumed rather than
+measured**, and remains the biggest open question in the repo — see
+[AGENTS.md](AGENTS.md), which is where the assumption is written down. No long
+session, no composition save/reload and no preset recall in the host were
+exercised either. There is no OpenFX port, no browser demo, no factory presets
+and no release tag.
 
 ## Build
 

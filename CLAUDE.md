@@ -72,10 +72,23 @@ the audio analysis.
 - macOS build must be universal. Verify with `lipo`, never the build log.
 - FFGL id is `VC01`; the display name is `SW Vocoder`.
 
+## What a real host has confirmed
+Registered, loaded and instantiated in **Resolume Arena 7.27.1** on Windows
+(win-lab, 2026-09-21), with the shaders compiling — on **Mesa llvmpipe**, a
+software rasteriser, so no GPU and no timings. The x64 DLL is cross-compiled in
+the Parallels guest (`cmake -A x64`, MSVC 2022, vcpkg `x64-windows-static-md`):
+372,736 bytes, `dumpbin /EXPORTS` shows `plugMain`. `oxbow selftest` on x64
+Windows: 120 frames, gl error 0x0, PASS, 100% lit pixels. In Arena the plugin
+logged **`host clock unit decided: milliseconds`**, against seconds under oxbow
+— the first time the clock-unit detection has met a real host.
+
 ## Not done yet
-- Never loaded into Resolume, and never installed into Extra Effects.
-- No real audio spectrum has ever reached it; what Resolume's FFT bins mean is
-  assumed (see `AGENTS.md`).
+- Never instantiated in Arena on macOS; never run on a GPU in Resolume.
+- **No real audio has ever reached it, including in Arena** — the Windows run
+  got as far as instantiation and no further. What Resolume's 64 FFT bins mean
+  is still assumed rather than measured (see `AGENTS.md`), and it is still the
+  repo's biggest open question.
+- Never installed into Extra Effects from an agent session.
 - No release tag, no website registration, no browser demo, no OpenFX port, no
   factory presets. `StoatworksAbout.h` and `ATTRIBUTIONS.md` are provisional
   hand copies with `guide=""`.
@@ -88,3 +101,4 @@ vendor/renderer/version, the host clock unit once it is decided, and — once �
 whether an audio spectrum ever arrived.
 
     ~/Library/Logs/vocoder/vocoder.YYYY-MM-DD.log
+    %LOCALAPPDATA%\vocoder\        (Windows — where the Arena run was read from)

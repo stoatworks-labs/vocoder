@@ -124,15 +124,56 @@ design.
   levels and most are tiny, so per-pass overhead dominates until the pixels
   start to matter.
 
+**Verified in a real host, on Windows, 2026-09-21:**
+
+Everything above is macOS and offline. On 2026-09-21 the plugin met **Resolume
+Arena 7.27.1** (build 15990) on **win-lab** — an x64 Windows 11 Pro VM with no
+GPU, so OpenGL came from **Mesa llvmpipe** dropped in beside Arena
+(`opengl32.dll` + `libgallium_wgl.dll`, `GALLIUM_DRIVER=llvmpipe`). The plugin
+reported the renderer itself:
+`Mesa … llvmpipe (LLVM 22.1.8, 256 bits) … 4.5 (Core Profile) Mesa 26.2.0`.
+
+- **The x64 DLL builds and exports the entry point.** Cross-compiled in the
+  Parallels guest on the Mac (ARM64 Windows 11, MSVC 2022 Build Tools,
+  `cmake -A x64`, vcpkg triplet `x64-windows-static-md`) — the same route the
+  fleet's `~/Projects/resolume/winbuild` scripts use. There is no x64 Windows
+  machine in the build loop. **372,736 bytes**, and `dumpbin /EXPORTS` shows
+  `plugMain`.
+- **Arena registers it.** Arena's own REST API lists **SW Vocoder** among 112
+  video effects, under `idstring` `VC01`, with the description the plugin
+  declares.
+- **Arena loads the DLL.** The plugin wrote `plugin loaded build=<stamp>` to its
+  diag log under `%LOCALAPPDATA%\vocoder\`, with the stamp of the DLL built
+  minutes earlier.
+- **Arena instantiates it and the shaders compile.** It was applied from Arena's
+  own effects browser and logged the GL strings followed by `initialised`, and
+  Arena drew its inspector for it, groups and all.
+- **The host clock unit detection works in a real host.** Under oxbow the plugin
+  sees seconds; in Arena it decided **milliseconds** — it logged `host clock
+  unit decided: milliseconds` there against `scale 1.0 (seconds)` offline. This
+  is the first time that code has met a real host, and it is the one piece of
+  the millisecond-bug machinery that could only ever be confirmed in one.
+- **It instantiates and renders headlessly on x64 Windows too.** oxbow, built
+  x64 in the same guest, ran `selftest`: **120 frames, gl error 0x0, PASS**, and
+  921,600/921,600 lit pixels (100%).
+- **No warnings or errors.** The diag log is clean of WARN/ERROR/FAIL.
+
 **Assumed, or not done:**
 
-- **Never loaded into Resolume.** Everything above was compiled, rendered and
-  measured offline against the real plugin class in a headless CGL context.
-  Nothing has driven the host. Whether eleven EQ sliders read sensibly in an
-  inspector is untested.
-- **No real audio spectrum has ever reached it.** The harness writes a synthetic
-  one. See the trap below — this is the biggest open question in the repo.
-- **Windows is not built here at all.** CI compiles it; nothing has run it.
+- **No GPU was involved on Windows, and nothing was timed there.** Everything in
+  Arena ran on llvmpipe, a software rasteriser. Nothing from that run says
+  anything about performance on Windows; the ms/frame figures above stay
+  macOS-only. It has **never run on a GPU in Resolume**.
+- **Never instantiated in Arena on macOS.** The macOS numbers above were all
+  compiled, rendered and measured offline against the real plugin class in a
+  headless CGL context.
+- **No real audio has ever reached it, in Arena or anywhere else.** The harness
+  writes a synthetic spectrum. See the trap below — this is still the biggest
+  open question in the repo, and the Windows run did not touch it.
+- **No long session, no composition save/reload, no preset recall in the host.**
+  The effect was applied to the **composition**, not to a clip:
+  `/api/v1/…/clips/1` still showed only `Transform` afterwards, so the proof of
+  instantiation is the diag log, not the clip's effect list.
 - **No OpenFX port, no browser demo, no factory presets, no release tag, no
   website registration.** `StoatworksAbout.h` and `ATTRIBUTIONS.md` are
   provisional hand copies in the shape the fleet's sync scripts generate, with
@@ -155,8 +196,31 @@ in this fleet has measured it — regauss, tinsel and macroblock all split at
 fixed indices and call the bottom slice the woofer, which is the same assumption
 wearing different trousers. If the bins turn out to be log-spaced, the partition
 is still monotone, the bands still do not overlap, and every check in the
-harness still passes; only the frequencies quoted in `Audio.h` are wrong. **The
-first host run should check this before anything else.**
+harness still passes; only the frequencies quoted in `Audio.h` are wrong.
+
+The first host run has now happened — Arena 7.27.1 on win-lab, 2026-09-21 — and
+it **did not settle this**: no real audio reached the plugin, because the run
+proved registration, loading and instantiation and got no further. The
+assumption is exactly where it was. **The next host run should check this before
+anything else**, and it needs a host with audio actually routed in, which
+win-lab (a headless VM on a software rasteriser) is not.
+
+**An ssh session on Windows has no desktop, so Arena must be launched through a
+scheduled task.** An ssh login lands on the *service* window station, which has
+no desktop at all: Arena started from there sits at about 31 MB doing nothing,
+never draws, and cannot be screenshotted. It has to be started in the console
+session (session 1) through the scheduled-task wrapper `C:\arena-lab\s1.ps1`.
+Every observation in the Windows run above depended on that, and an hour goes
+into rediscovering it.
+
+**Arena's REST API can tell you the plugin is registered, but it cannot
+instantiate it for you.** `/api/v1/effects` and `/api/v1/sources` list every
+plugin by its **FFGL id** as `idstring` — `VC01` here, not `SW Vocoder` — which
+is how registration was proven. But the add-effect endpoint **returns 200
+without adding anything**: nothing appears, and no log line is written.
+Instantiation has to be driven from Arena's own effects browser in the GUI
+(double-click applies to the current selection). Do not read a 200 from that
+endpoint as a plugin that loaded.
 
 **A follower has one coefficient at a time, so Attack is dead in a decay.** The
 sweep reported `Attack` DEAD and was entirely right: it sampled the last frame
@@ -247,6 +311,13 @@ texture, and this plugin's `ProcessOpenGL` correctly returns `FF_FAIL` when
 handed no picture, so a FAIL from it would say nothing. `verify.sh` uses `oxbow
 probe` and asserts the name, the id and the type — which is what the brief for
 this repo asks for and what a host actually reads.
+
+On win-lab the x64 `oxbow selftest` nonetheless reported **120 frames, gl error
+0x0, PASS** with 921,600/921,600 lit pixels. That was observed, not explained:
+whatever that build hands the plugin is evidently enough for `ProcessOpenGL` to
+render a full frame. Read the PASS as evidence the DLL instantiates and renders
+on x64 Windows, not as a check of the effect's output, and leave `verify.sh` on
+`probe`.
 
 ---
 
