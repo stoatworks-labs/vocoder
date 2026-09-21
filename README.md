@@ -25,6 +25,17 @@ A channel vocoder with the picture as the carrier, as an FFGL effect for
 plugin's own shaders in WebGL2, no install. The audio side is not there and is
 not faked.
 
+[![Vocoder — a channel vocoder with the picture as the carrier](docs/video-thumb.png)](https://www.youtube.com/watch?v=lPsvlzdT41E)
+
+*[Watch it](https://www.youtube.com/watch?v=lPsvlzdT41E) — 52 seconds: one band
+cut and put back, the same fader pushed to 4× until the picture rings, the tilt,
+the residual at zero, and the null. Every frame is the real plugin's output: an
+FFGL plugin has no window, so the footage is rendered by this repository's own
+offline harness (`vctest --pipe`, driven by a cue sheet) rather than filmed off
+a screen, on Resolume's own bundled demo clips. The last beat is audio-driven,
+and the spectrum driving it is the harness's synthetic programme (`--feed`),
+not music.*
+
 <!-- downloads:start -->
 
 ## Download
