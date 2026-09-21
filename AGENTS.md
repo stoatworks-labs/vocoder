@@ -136,9 +136,10 @@ reported the renderer itself:
 - **The x64 DLL builds and exports the entry point.** Cross-compiled in the
   Parallels guest on the Mac (ARM64 Windows 11, MSVC 2022 Build Tools,
   `cmake -A x64`, vcpkg triplet `x64-windows-static-md`) — the same route the
-  fleet's `~/Projects/resolume/winbuild` scripts use. There is no x64 Windows
-  machine in the build loop. **372,736 bytes**, and `dumpbin /EXPORTS` shows
-  `plugMain`.
+  fleet's `~/Projects/resolume/winbuild` scripts use, because there is no x64
+  Windows machine in the *local* build loop. **372,736 bytes**, and
+  `dumpbin /EXPORTS` shows `plugMain`. CI builds x64 Windows itself, but that
+  build has never been in front of Arena.
 - **Arena registers it.** Arena's own REST API lists **SW Vocoder** among 112
   video effects, under `idstring` `VC01`, with the description the plugin
   declares.
