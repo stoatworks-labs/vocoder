@@ -44,10 +44,23 @@ export function port(source, { stage = 'fragment' } = {}) {
   // reads a usampler2D fails to compile with "No precision specified" and
   // nothing else. Desktop GL needs none of this, which is why the plugins'
   // sources carry none. coinop reads its playfield through a usampler2D.
+  //
+  // The array and 3D samplers are the same story: in the fragment stage ES 3.00
+  // gives a default precision only to sampler2D and samplerCube, so every one of
+  // sampler2DArray, sampler3D and their u/i variants has to be declared. What
+  // makes these worse than the integer samplers is that some drivers let them
+  // through anyway, so the shader compiles on the machine it was written on and
+  // fails on someone else's with `'sampler2DArray' : No precision specified` and
+  // nothing else. readout reads its ring of recent frames — one
+  // GL_TEXTURE_2D_ARRAY — through a sampler2DArray.
   const precision =
     stage === 'fragment'
       ? 'precision highp float;\nprecision highp int;\nprecision highp sampler2D;\n'
         + 'precision highp usampler2D;\nprecision highp isampler2D;\n'
+        + 'precision highp sampler2DArray;\nprecision highp usampler2DArray;\n'
+        + 'precision highp isampler2DArray;\n'
+        + 'precision highp sampler3D;\nprecision highp usampler3D;\n'
+        + 'precision highp isampler3D;\n'
       : 'precision highp float;\nprecision highp int;\n';
 
   // `precise` is dropped, because ES 3.00 does not have it. It arrived in
