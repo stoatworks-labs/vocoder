@@ -1,40 +1,37 @@
 # Vocoder
 
 > **AI-assisted project.** This codebase was created with [Claude](https://claude.com/claude-code)
-> (Anthropic), directed and reviewed by a human author. The central claim is
-> numerical, so it is measured rather than asserted: an offline harness drives
-> the real plugin class in a headless GL context and checks that the pyramid
-> reconstructs its input **to a maximum difference of 0** at 720p, 1080p and 4K
-> on this Mac, and **within one float ULP** on hardware where the two sides of
-> the cancellation round differently, as GitHub's macOS runner does; that its
-> bands genuinely partition the picture (9.5e-07); that the
-> shipped shaders compute what an independent CPU implementation of
-> Burt–Adelson computes (1.2e-07 over eight bands); that a sine in audio band
-> *k* moves picture band *k* and no other; and that the envelope followers keep
-> their attack and release times. A control sweep fails if any parameter turns
-> out to do nothing. It **has** been registered, loaded and instantiated in
-> Resolume Arena 7.27.1 — on Windows, on a software rasteriser, with the shaders
-> compiling — but it has **never run on a GPU in Resolume**, and has never been
-> instantiated in Arena on macOS. Check it in your own rig before trusting it in
-> a show.
+> (Anthropic), directed and reviewed by a human author. It **has** been registered,
+> loaded and instantiated in Resolume Arena 7.27.1 (on Windows, on a software rasteriser,
+> with the shaders compiling), but it has **never run on a GPU in Resolume**, and it's never
+> been instantiated in Arena on macOS. The main claim is numerical, so it's measured rather
+> than just asserted, by an offline harness that drives the plugin class itself in a
+> headless GL context: the pyramid reconstructs its input **to a maximum difference of 0**
+> at 720p, 1080p and 4K on this Mac (and **within one float ULP** where the two sides of the
+> cancellation round differently, as GitHub's macOS runner does), its bands partition the
+> picture to 9.5e-07, and a sine in audio band *k* moves picture band *k* and no other. More
+> under [Status](#status). Check it in your own rig before you trust it in a show.
 
 A channel vocoder with the picture as the carrier, as an FFGL effect for
-[Resolume](https://resolume.com) Arena and Avenue.
+[Resolume](https://resolume.com) Arena and Avenue. With nothing routed to it, it's a
+graphic EQ for spatial frequency; feed it audio and the bass pumps the big shapes while
+the treble sparkles the fine detail. It won't make anyone sound like a robot, I'm afraid.
+It does that sort of thing to pictures instead.
 
-**[Try the EQ side in your browser](https://vocoder-demo.stoatworks-labs.com/)** — the
-plugin's own shaders in WebGL2, no install. The audio side is not there and is
-not faked.
+**[Try the EQ side in your browser](https://vocoder-demo.stoatworks-labs.com/)**: the
+plugin's own shaders in WebGL2, with nothing to install. The audio side isn't there,
+and it isn't faked either.
 
 [![Vocoder — a channel vocoder with the picture as the carrier](docs/video-thumb.png)](https://www.youtube.com/watch?v=lPsvlzdT41E)
 
-*[Watch it](https://www.youtube.com/watch?v=lPsvlzdT41E) — 52 seconds: one band
+*[Watch it](https://www.youtube.com/watch?v=lPsvlzdT41E) (52 seconds): one band
 cut and put back, the same fader pushed to 4× until the picture rings, the tilt,
-the residual at zero, and the null. Every frame is the real plugin's output: an
-FFGL plugin has no window, so the footage is rendered by this repository's own
-offline harness (`vctest --pipe`, driven by a cue sheet) rather than filmed off
-a screen, on Resolume's own bundled demo clips. The last beat is audio-driven,
-and the spectrum driving it is the harness's synthetic programme (`--feed`),
-not music.*
+the residual at zero, and the null. It's all the plugin's own output. An FFGL
+plugin doesn't have a window to film, so the footage comes from this repo's
+offline harness (`vctest --pipe`, driven by a cue sheet) rather than a recording
+of a screen, on Resolume's own bundled demo clips. The last beat is audio-driven,
+and the spectrum driving it is the harness's synthetic programme (`--feed`)
+rather than music.*
 
 <!-- downloads:start -->
 
@@ -71,69 +68,69 @@ macOS builds are signed and notarised and open normally. The Windows builds are 
 ## The one idea
 
 A channel vocoder splits the **carrier** into frequency bands and sets each
-band's gain from the matching band of the **modulator**. That is the whole
-machine; everything else is a choice of what to put in it.
+band's gain from the matching band of the **modulator**. That's the whole
+machine, and everything else is a choice of what to put in it.
 
 So put a picture in it. The carrier is the frame, its "frequency" is **spatial**
 frequency, and the modulator is the audio. Split the frame into a Laplacian
-pyramid — eight octave bands, from one-pixel detail up to 128-pixel shapes, plus
-a residual — multiply each band by a gain, and sum them back.
+pyramid (eight octave bands, from one-pixel detail up to 128-pixel shapes, plus
+a residual), multiply each band by a gain, and sum them back.
 
-With every gain at 1× the input comes back **exactly**, and not approximately:
-the reconstruction is arranged so that the thing being expanded is a difference
-that is identically zero, so the output is the input to the bit. That is the
-plugin's null, and it is what makes everything else honest.
+With every gain at 1× the input comes back **exactly**, not approximately:
+the reconstruction is arranged so the thing being expanded is a difference
+that's identically zero, so the output is the input to the bit. That's the
+plugin's null, and it's what keeps everything else honest.
 
-The exactness is structural rather than lucky — but it holds to the bit only
-while both sides of that difference are computed the same way. They are on this
+The exactness comes from the structure rather than luck, but it only holds to the
+bit while both sides of that difference are computed the same way. They are on this
 Mac, where the measurement is a literal zero. On GitHub's macOS runner, which
 has no accelerated GL context, the same test reads 5.96e-08: one ULP of a float,
-which is a rounding difference between the two paths and not a reconstruction
-error. The check allows that ULP and prints the number either way, so the
-distinction stays visible instead of being hidden by a tolerance.
+a rounding difference between the two paths rather than a reconstruction
+error. The check allows that ULP and prints the number either way, so you can
+still see the difference instead of it disappearing into a tolerance.
 
 ## What falls out of it
 
 ![The test card as its detail bands: the gradient is gone, flat interiors are black, edges and texture survive](docs/hero.png)
 
-<sub>"Spectrum only" — the Residual at 0, so the picture's DC and coarsest shapes
-are removed and what is left is the picture as its detail bands. Rendered by
-`vctest`, the offline harness, not captured from Resolume. The source card is
+<sub>"Spectrum only": the Residual at 0, so the picture's DC and coarsest shapes
+are removed and what's left is the picture as its detail bands. Rendered by
+`vctest`, the offline harness, rather than captured from Resolume. The source card is
 [docs/card.png](docs/card.png).</sub>
 
 **A graphic EQ for spatial frequency**, when nothing is routed to it. A boost at
 the 4 px band makes the picture *ring* at 4 px; a cut removes detail at that
 scale and leaves every other scale alone; a tilt across the bank is sharpen at
-one end and soften at the other. This is not a blur and not a sharpen filter —
-it is nine independent faders across scale.
+one end and soften at the other. So it's nine independent faders across scale,
+rather than one blur or sharpen knob.
 
 **A vocoder**, when audio is routed. The eight audio bands drive the eight
 picture bands: bass pumps the large shapes and treble sparkles the fine detail,
 or the reverse by a switch. The audio gains *multiply* the slider gains, so a
-band you have cut stays cut whatever the music does.
+band you've cut stays cut whatever the music does.
 
-**A new kind of edge picture**, by turning the Residual down. What is left is
-the picture as its detail bands — the image above.
+**A new kind of edge picture**, by turning the Residual down. What's left is
+the picture as its detail bands, as in the image above.
 
 ## Controls
 
-**EQ** — `Band 1 (1 px)` … `Band 8 (128 px)`, `Residual`, `Tilt`, `Master`,
+**EQ**: `Band 1 (1 px)` … `Band 8 (128 px)`, `Residual`, `Tilt`, `Master`,
 `Carrier`.
 
-The band sliders are **0 to 4×, linear, with 1× at a quarter**. That is unusual
-and deliberate: a graphic EQ's fader is symmetric in dB, but a vocoder band's
+The band sliders are **0 to 4×, linear, with 1× at a quarter**. That's unusual,
+and on purpose: a graphic EQ's fader is symmetric in dB, but a vocoder band's
 gain is a multiplier that spends most of its life between "off" and "as loud as
 the carrier", so this gives the cut side a usable length and the boost side room
 to ring. `Tilt` is ±6 dB per band about the middle of the bank. `Carrier` picks
 RGB (all three channels) or Luma (Y only, keeping the input's colour).
 
 A band's *name* is its level's sampling pitch. Its power actually peaks a little
-lower — an octave band of a Burt–Adelson pyramid is centred well below its
-level's Nyquist — so the "4 px" band rings with a period of about 21 px.
+lower (an octave band of a Burt–Adelson pyramid is centred well below its
+level's Nyquist), so the "4 px" band rings with a period of about 21 px.
 `vctest --band` measures that rather than assuming it, and the numbers are in
 [Status](#status).
 
-**Audio** — `Audio` (the source picker), `Drive`, `Floor`, `Attack`, `Release`,
+**Audio**: `Audio` (the source picker), `Drive`, `Floor`, `Attack`, `Release`,
 `Mapping`, `Sidechain Mode`.
 
 `Drive` is how far a fully driven band swings, 0–24 dB. `Floor` is what a
@@ -142,11 +139,11 @@ level's Nyquist — so the "4 px" band rings with a period of about 21 px.
 Mode` is Vocoder (one envelope per band) or Dynamics (one envelope for the lot,
 driving the Tilt).
 
-**Output** — `Mix`.
+**Output**: `Mix`.
 
 ## Status
 
-**v0.1.0, and honestly early.** Everything below is measured by
+**v0.1.0, and still early days.** Everything below is measured by
 `tools/verify.sh` on an M4 Max, macOS 26.4, against a fresh universal Release
 build.
 
@@ -164,18 +161,18 @@ build.
 | As a host reads it | `oxbow probe`: **SW Vocoder**, `VC01`, effect, 24 parameters in 4 groups, none truncated |
 | Render cost | 0.77 ms at 720p, 0.66 at 1080p, 1.89 at 4K |
 
-The render cost is not a typo: 1080p is *faster* than 720p. There are 33 passes
+The render cost isn't a typo: 1080p is *faster* than 720p. There are 33 passes
 for eight levels and most of them are tiny, so at small sizes the per-pass
-overhead dominates and the pixel count barely matters. At 4K it is 11% of a
+overhead dominates and the pixel count barely matters. At 4K it's 11% of a
 60 fps frame.
 
 ### In Resolume, on Windows
 
 On 2026-09-21 the plugin was put in front of a real host for the first time:
 **Resolume Arena 7.27.1** (build 15990) on win-lab, an x64 Windows 11 Pro VM
-with **no GPU**, so OpenGL came from **Mesa llvmpipe** — the plugin reported
+with **no GPU**, so OpenGL came from **Mesa llvmpipe** (the plugin reported
 `Mesa … llvmpipe (LLVM 22.1.8, 256 bits) … 4.5 (Core Profile) Mesa 26.2.0`
-itself.
+itself).
 
 | Check | Result |
 | --- | --- |
@@ -188,25 +185,25 @@ itself.
 | Warnings or errors | none — the diag log is clean of WARN/ERROR/FAIL |
 
 **No GPU was involved**, so nothing here says anything about performance on
-Windows and nothing was timed there; the ms/frame figures above remain
+Windows and nothing was timed there; the ms/frame figures above are still
 macOS-only.
 
-**Not verified.** It has never been instantiated in Arena on macOS, and it has
+**Not verified.** It's never been instantiated in Arena on macOS, and it's
 never run on a GPU in Resolume on either platform. **No real audio reached it in
 Arena**: the audio paths are still exercised only by the harness's synthetic
 spectrum, because the host is the only thing that can fill an FFT buffer. So
 what Resolume's 64 FFT bins actually *mean* is **still assumed rather than
-measured**, and remains the biggest open question in the repo — see
-[AGENTS.md](AGENTS.md), which is where the assumption is written down. No long
-session, no composition save/reload and no preset recall in the host were
-exercised either. There is no user guide, no OpenFX port and no factory
-presets. There is a [browser demo](https://vocoder-demo.stoatworks-labs.com/),
-which runs the plugin's own shaders in WebGL2 — but it carries the EQ side
-only and says so, because the audio half cannot be shown in a browser at all.
+measured**, and it's still the biggest open question in the repo.
+[AGENTS.md](AGENTS.md) is where the assumption is written down. A long session,
+a composition save/reload and preset recall in the host weren't tried either.
+There's no user guide, no OpenFX port and no factory presets. There's a
+[browser demo](https://vocoder-demo.stoatworks-labs.com/), which runs the plugin's
+own shaders in WebGL2, but it only carries the EQ side and says so, because the
+audio half can't be shown in a browser at all.
 
 The DLL in the table above was the hand-built one. CI builds x64 Windows on every
-push and the release workflow builds it again on a GitHub runner — both have run
-and passed — but neither of those builds has been put in front of Arena.
+push and the release workflow builds it again on a GitHub runner. Both have run
+and passed, but neither of those builds has been put in front of Arena.
 
 ## Build
 
@@ -225,7 +222,7 @@ macOS builds universal (arm64 + x86_64) by default. Add
 
 ## Building and testing
 
-The offline harness renders the real plugin class headlessly:
+The offline harness renders the plugin class itself, headless:
 
 ```bash
 ./build/vctest --out /tmp/frame.png     # the test card, through the plugin
@@ -239,7 +236,7 @@ python3 tools/sweep.py                  # no control is silently dead
 tools/verify.sh                         # all of it, on a fresh universal build
 ```
 
-`--pipe` puts raw RGBA frames from stdin through the real plugin class and
+`--pipe` puts raw RGBA frames from stdin through the plugin class itself and
 writes raw RGBA to stdout, so a clip can be filmed through it:
 
 ```bash
@@ -264,5 +261,5 @@ MIT — see [LICENSE](LICENSE).
 
 The Laplacian pyramid is Burt and Adelson's, from *The Laplacian Pyramid as a
 Compact Image Code* (1983); the channel vocoder it stands in for is Homer
-Dudley's (1939). Both are described in the published literature, not copied from
-anyone's source — the implementation here is this repo's own.
+Dudley's (1939). Both come from the published literature rather than anyone's
+source code, and the implementation here is this repo's own.
