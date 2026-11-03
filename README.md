@@ -22,6 +22,8 @@ It does that sort of thing to pictures instead.
 plugin's own shaders in WebGL2, with nothing to install. The audio side isn't there,
 and it isn't faked either.
 
+The [project page](https://stoatworks-labs.com/software/vocoder/) has the downloads and the video.
+
 [![Vocoder — a channel vocoder with the picture as the carrier](docs/video-thumb.png)](https://www.youtube.com/watch?v=lPsvlzdT41E)
 
 *[Watch it](https://www.youtube.com/watch?v=lPsvlzdT41E) (52 seconds): one band
